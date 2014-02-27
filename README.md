@@ -7,7 +7,7 @@ Kailash Nadh, http://nadh.in --
 License: GPL v2
 
 # Client
-Once you have compiled or downloaded the binary, simply run the following on your terminal:
+Once you have compiled or [downloaded](https://github.com/knadh/go-get-youtube/releases) the binary, simply run the following on your terminal:
 
 `ytdownload -id=youtube_video_id`
 
