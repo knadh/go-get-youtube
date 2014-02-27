@@ -1,4 +1,4 @@
-# go-get-youtube
+# go-get-youtube v 0.2
 A tiny Go library + client for download Youtube videos. The library is capable of fetching Youtube video metadata, in addition to downloading videos.
 
 Kailash Nadh, http://nadh.in --
