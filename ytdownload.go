@@ -85,6 +85,7 @@ func main() {
 	// no id supplied, show help text
 	if *video_id == "" {
 		intro()
+		return
 	}
 
 	fmt.Println("Hold on ...")
