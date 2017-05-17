@@ -22,7 +22,7 @@ import (
 
 func intro() {
 	txt :=
-	`
+		`
 
 	Go Get Youtube
 	==============
@@ -38,17 +38,17 @@ func intro() {
 
 func printVideoMeta(video youtube.Video) {
 	txt :=
-	`
+		`
 	ID	:	%s
 	Title	:	%s
 	Author	:	%s
 	Views	:	%d
 	Rating	:	%f`
 
-	fmt.Printf(txt, video.Id, video.Title, video.Author, video.View_count, video.Avg_rating);
-	fmt.Println("\n\n\tFormats");
+	fmt.Printf(txt, video.Id, video.Title, video.Author, video.View_count, video.Avg_rating)
+	fmt.Println("\n\n\tFormats")
 
-	for i:=0; i<len(video.Formats); i++ {
+	for i := 0; i < len(video.Formats); i++ {
 		fmt.Printf("\t%d\t%d-%s\t%s\n", i, video.Formats[i].Itag, video.Formats[i].Quality, video.Formats[i].Video_type)
 	}
 	fmt.Println("\n")
@@ -70,11 +70,15 @@ func getItag(max int) int {
 func downloadVideo(video youtube.Video, index int) {
 	ext := video.GetExtension(index)
 
-	fmt.Printf("Downloading to %s.%s ... This could take a while", video.Id, ext)
-	
-	video.Download(index, video.Id + "." + ext)
-	
-	fmt.Println("Done")
+	fmt.Printf("Downloading to %s.%s ... This could take a while\n", video.Id, ext)
+
+	filename := fmt.Sprintf("%s.%s", video.Id, ext)
+	err := video.Download(index, filename)
+	if err != nil {
+		fmt.Println("Error:", err)
+	} else {
+		fmt.Println("Downloaded", filename)
+	}
 }
 
 func main() {
@@ -101,7 +105,8 @@ func main() {
 	printVideoMeta(video)
 
 	// get the format choice from the user
-	i := -1; max := len(video.Formats) - 1
+	i := -1
+	max := len(video.Formats) - 1
 	for {
 		if (i == -1) || (i < 0) || (i > max) {
 			i = getItag(max)
@@ -109,5 +114,5 @@ func main() {
 			downloadVideo(video, i)
 			break
 		}
-	}	
+	}
 }
