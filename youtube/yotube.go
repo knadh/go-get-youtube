@@ -174,9 +174,9 @@ func (video *Video) DownloadChunks(out *os.File, length int64, url string) error
 			//fmt.Println("status", resp.StatusCode)
 			if resp.StatusCode != http.StatusPartialContent {
 				if n == 10 {
-					fmt.Println(
-						"\nDownload failed after 10 attempts at offset %d: HTTP %d",
-						offset, resp.StatusCode)
+					fmt.Printf(
+						"\nDownload failed after 10 attempts at offset %v: HTTP %d %s\n",
+						offset, resp.StatusCode, http.StatusText(resp.StatusCode))
 					defer resp.Body.Close()
 					return errors.New("Unable to download video content from Yotutube")
 				}
