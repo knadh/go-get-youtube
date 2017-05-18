@@ -51,19 +51,20 @@ func printVideoMeta(video youtube.Video) {
 	for i := 0; i < len(video.Formats); i++ {
 		fmt.Printf("\t%d\t%d-%s\t%s\n", i, video.Formats[i].Itag, video.Formats[i].Quality, video.Formats[i].Video_type)
 	}
-	fmt.Println("\n")
+	fmt.Println()
+	fmt.Println()
 }
 
-func getItag(max int) int {
-	var i int
+func getItag(max int) (i int) {
 	for {
 		fmt.Printf("Pick a format [0-%d]: ", max)
 		if _, err := fmt.Scanf("%d", &i); err == nil {
-			return i
+			if i >= 0 && i <= max {
+				return
+			}
 		}
 		fmt.Println("Invalid entry")
 	}
-	return i
 }
 
 func downloadVideo(video youtube.Video, index int, resume, rename bool) error {
