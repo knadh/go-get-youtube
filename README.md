@@ -56,8 +56,11 @@ func main() {
 	video, err := youtube.Get("FTl0tl9BGdc")
 
 	// download the video and write to file
-	video.download(0, "video.mp4")
+	option := &youtube.Option{
+		Rename: true,  // rename file using video title
+		Resume: true,  // resume cancelled download
+		Mp3:    true,  // extract audio to MP3
+	}
+	video.Download(0, "video.mp4", option)
 }
-
 ```
-
