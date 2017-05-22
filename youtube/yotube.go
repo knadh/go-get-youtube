@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -42,7 +43,7 @@ const (
 
 var (
 	// Video formats
-	FORMATS = []string{"3gp", "mp4", "flv", "webm", "avi"}
+	Formats = []string{"3gp", "mp4", "flv", "webm", "avi"}
 )
 
 // holds a video's information
@@ -57,6 +58,13 @@ type Video struct {
 type Format struct {
 	Itag                     int
 	Video_type, Quality, Url string
+}
+
+// Download options
+type Option struct {
+	Resume bool // resume failed or cancelled download
+	Rename bool // rename output file using video title
+	Mp3    bool // extract audio using ffmpeg
 }
 
 // _________________________________________________________________
@@ -77,14 +85,15 @@ func Get(video_id string) (Video, error) {
 	return meta, nil
 }
 
-func (video *Video) Download(index int, filename string, resume, rename bool) error {
+func (video *Video) Download(index int, filename string, option *Option) error {
 	var (
 		out    *os.File
 		err    error
 		offset int64
+		length int64
 	)
 
-	if resume {
+	if option.Resume {
 		// Resume download from last known offset
 		flags := os.O_WRONLY | os.O_CREATE
 		out, err = os.OpenFile(filename, flags, 0644)
@@ -105,45 +114,51 @@ func (video *Video) Download(index int, filename string, resume, rename bool) er
 			return fmt.Errorf("Unable to write to file %q: %s", filename, err)
 		}
 	}
+
 	defer out.Close()
 
 	url := video.Formats[index].Url
 	video.Filename = filename
 
-	// Check if server accepts range request
+	// Get video content length
 	if resp, err := http.Head(url); err != nil {
 		return fmt.Errorf("Head request failed: %s", err)
-
-	} else if resp.Header.Get("Accept-Ranges") == "bytes" {
-		// Download in chunks
-		var length int64
+	} else {
+		// Get video content length
 		if size := resp.Header.Get("Content-Length"); len(size) == 0 {
 			return errors.New("Content-Length header is missing")
 		} else if length, err = strconv.ParseInt(size, 10, 64); err != nil {
 			return fmt.Errorf("Invalid Content-Length: %s", err)
 		}
-		if length == offset {
-			fmt.Println("Video file is already dowloaded.")
+		if length <= offset {
+			fmt.Println("Video file is already downloaded.")
 			return nil
-		}
-		if err := video.DownloadChunks(out, length, url, offset); err != nil {
-			return err
-		}
-
-	} else {
-		// No range support, download without progress print
-		resp, err := http.Get(url)
-		if err != nil {
-			return fmt.Errorf("Request failed: %s", err)
-		}
-		defer resp.Body.Close()
-
-		if _, err := io.Copy(out, resp.Body); err != nil {
-			return err
 		}
 	}
 
-	if rename {
+	if length > 0 {
+		go printProgress(out, offset, length)
+	}
+
+	// Not using range requests by default, because Youtube is throttling
+	// download speed. Using a single GET request for max speed.
+	start := time.Now()
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("Request failed: %s", err)
+	}
+	defer resp.Body.Close()
+
+	if length, err = io.Copy(out, resp.Body); err != nil {
+		return err
+	}
+
+	// Download stats
+	duration := time.Now().Sub(start)
+	speed := float64(length) / float64(duration/time.Second)
+	duration -= duration % time.Second
+
+	if option.Rename {
 		// Rename output file using video title
 		wspace := regexp.MustCompile(`\W+`)
 		fname := strings.Split(filename, ".")[0]
@@ -152,12 +167,39 @@ func (video *Video) Download(index int, filename string, resume, rename bool) er
 		if len(title) > 64 {
 			title = title[:64]
 		}
-		title = strings.ToLower(title)
+		title = strings.TrimRight(strings.ToLower(title), "-")
 		video.Filename = fmt.Sprintf("%s-%s%s", fname, title, ext)
 		if err := os.Rename(filename, video.Filename); err != nil {
 			fmt.Println("Failed to rename output file:", err)
 		}
 	}
+
+	// Extract audio from downloaded video using ffmpeg
+	if option.Mp3 {
+		if err := out.Close(); err != nil {
+			fmt.Println("Error:", err)
+		}
+		ffmpeg, err := exec.LookPath("ffmpeg")
+		if err != nil {
+			fmt.Println("ffmpeg not found")
+		} else {
+			fname := video.Filename
+			mp3 := strings.TrimRight(fname, filepath.Ext(fname)) + ".mp3"
+			cmd := exec.Command(ffmpeg, "-y", "-i", fname, "-vn", mp3)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				fmt.Println("Failed to extract audio:", err)
+			} else {
+				fmt.Println()
+				fmt.Println("Extracted audio:", mp3)
+			}
+		}
+	}
+
+	fmt.Printf("Download duration: %s\n", duration)
+	fmt.Printf("Average speed: %s/s\n", abbr(int64(speed)))
 
 	return nil
 }
@@ -175,97 +217,37 @@ func abbr(byteSize int64) string {
 	return fmt.Sprintf("%d", byteSize)
 }
 
-// Downloads video content in chunks and prints progress
-func (video *Video) DownloadChunks(out *os.File, length int64,
-	url string, offset int64) error {
-
-	var (
-		chunk  int64 = 1 << 20 // 1MB
-		ticker       = time.NewTicker(time.Second)
-	)
-
+// Measure download speed using output file offset
+func printProgress(out *os.File, offset, length int64) {
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	start := time.Now()
+	tail := offset
 
-	printProgress := func() {
-		start := time.Now()
-		tail := offset
-		for now := range ticker.C {
-			duration := now.Sub(start)
-			duration -= duration % time.Second
-			speed := offset - tail
-			percent := int(100 * offset / length)
-			progress := fmt.Sprintf(
-				"%s\t %s/%s\t %d%%\t %s/s",
-				duration, abbr(offset), abbr(length), percent, abbr(speed))
-			fmt.Println(progress)
-			tail = offset
-			if tail == length {
-				break
-			}
-		}
-	}
-
-	if length > 0 {
-		go printProgress()
-	}
-
-	for {
-		rangeHeader := fmt.Sprintf("bytes=%d-%d", offset, offset+chunk)
-		if length < chunk {
-			rangeHeader = fmt.Sprintf("bytes=%d-", offset)
-		}
-		//fmt.Println(length, rangeHeader)
-		req, err := http.NewRequest(http.MethodGet, url, nil)
+	var err error
+	for now := range ticker.C {
+		duration := now.Sub(start)
+		duration -= duration % time.Second
+		offset, err = out.Seek(0, os.SEEK_CUR)
 		if err != nil {
-			return fmt.Errorf("Invalid request: %s", err)
+			return
 		}
-		req.Header.Set("Range", rangeHeader)
-
-		for n := 0; ; n++ {
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				return fmt.Errorf("Request failed: %s", err)
-			}
-
-			//fmt.Println("status", resp.StatusCode)
-			if resp.StatusCode != http.StatusPartialContent {
-				if n == 10 {
-					fmt.Printf(
-						"\nDownload failed after 10 attempts at offset %v: HTTP %d %s\n",
-						offset, resp.StatusCode, http.StatusText(resp.StatusCode))
-					defer resp.Body.Close()
-					return errors.New("Unable to download video content from Yotutube")
-				}
-				fmt.Println(http.StatusText(resp.StatusCode), "..")
-				time.Sleep(time.Second)
-				resp.Body.Close()
-				continue
-			}
-
-			offset += resp.ContentLength
-			if _, err := io.Copy(out, resp.Body); err != nil {
-				return err
-			}
-			resp.Body.Close()
+		speed := offset - tail
+		percent := int(100 * offset / length)
+		progress := fmt.Sprintf(
+			"%s\t %s/%s\t %d%%\t %s/s",
+			duration, abbr(offset), abbr(length), percent, abbr(speed))
+		fmt.Println(progress)
+		tail = offset
+		if tail == length {
 			break
-		}
-
-		if offset >= length {
-			time.Sleep(time.Second)
-			fmt.Println()
-			break
-		}
-		if length-offset < chunk {
-			chunk = length - offset
 		}
 	}
-
-	return nil
 }
 
 // figure out the file extension from a codec string
 func (v *Video) GetExtension(index int) string {
-	for _, format := range FORMATS {
+	for _, format := range Formats {
 		if strings.Contains(v.Formats[index].Video_type, format) {
 			return format
 		}
@@ -274,14 +256,15 @@ func (v *Video) GetExtension(index int) string {
 	return "avi"
 }
 
-// Returns video format index by Itag number, or -1 if unknown
-func (v *Video) IndexByItag(itag int) int {
-	for i, format := range v.Formats {
+// Returns video format index by Itag number, or nil if unknown
+func (v *Video) IndexByItag(itag int) (int, *Format) {
+	for i := range v.Formats {
+		format := &v.Formats[i]
 		if format.Itag == itag {
-			return i
+			return i, format
 		}
 	}
-	return -1
+	return 0, nil
 }
 
 // _________________________________________________________________

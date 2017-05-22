@@ -49,7 +49,7 @@ func printVideoMeta(video youtube.Video) {
 	fmt.Println("\n\n\tFormats")
 
 	for i := 0; i < len(video.Formats); i++ {
-		fmt.Printf("\t%d\t%d-%s\t%s\n", i, video.Formats[i].Itag, video.Formats[i].Quality, video.Formats[i].Video_type)
+		fmt.Printf("\t%d\tItag %d: %s\t%s\n", i, video.Formats[i].Itag, video.Formats[i].Quality, video.Formats[i].Video_type)
 	}
 	fmt.Println()
 	fmt.Println()
@@ -63,23 +63,23 @@ func getItag(max int) (i int) {
 				return
 			}
 		}
-		fmt.Println("Invalid entry")
+		fmt.Println("Invalid entry:", i)
 	}
 }
 
-func downloadVideo(video youtube.Video, index int, resume, rename bool) error {
+func downloadVideo(video youtube.Video, index int, option *youtube.Option) error {
 
 	ext := video.GetExtension(index)
 
-	fmt.Printf("Downloading to %s.%s ... This could take a while\n", video.Id, ext)
+	fmt.Printf("Downloading to '%s.%s'\n", video.Id, ext)
 
 	filename := fmt.Sprintf("%s.%s", video.Id, ext)
-	err := video.Download(index, filename, resume, rename)
+	err := video.Download(index, filename, option)
 	if err != nil {
 		fmt.Println("Error:", err)
 		fmt.Println("Unable to download video content from Youtube.")
 	} else {
-		fmt.Println("Downloaded", video.Filename)
+		fmt.Println("Downloaded video:", video.Filename)
 	}
 	return err
 }
@@ -87,9 +87,10 @@ func downloadVideo(video youtube.Video, index int, resume, rename bool) error {
 func main() {
 	// get the video id from the command line
 	video_id := flag.String("id", "", "Youtube video ID to download")
-	resume := flag.Bool("resume", false, "Resume failed download")
+	resume := flag.Bool("resume", false, "Resume cancelled download")
 	itag := flag.Int("itag", 0, "Select video format by Itag number")
 	rename := flag.Bool("rename", false, "Rename downloaded file using video title")
+	mp3 := flag.Bool("mp3", false, "Extract MP3 audio using ffmpeg")
 	flag.Parse()
 
 	// no id supplied, show help text
@@ -112,17 +113,25 @@ func main() {
 	// get the format choice from the user
 	var index int
 	if *itag > 0 {
-		index = video.IndexByItag(*itag)
-		if index == -1 {
+		idx, format := video.IndexByItag(*itag)
+		if format == nil {
 			fmt.Println("Unknown Itag number:", *itag)
 			os.Exit(1)
 		}
+		index = idx
+		fmt.Printf("Selected: %s %s\n", format.Video_type, format.Quality)
 	} else {
 		max := len(video.Formats) - 1
 		index = getItag(max)
 	}
 
-	err = downloadVideo(video, index, *resume, *rename)
+	option := &youtube.Option{
+		Resume: *resume,
+		Rename: *rename,
+		Mp3:    *mp3,
+	}
+
+	err = downloadVideo(video, index, option)
 	if err != nil {
 		os.Exit(1)
 	}
