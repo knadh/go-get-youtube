@@ -82,7 +82,7 @@ func Get(video_id string) (Video, error) {
 		return Video{}, err
 	}
 
-	return meta, nil
+	return *meta, nil
 }
 
 func (video *Video) Download(index int, filename string, option *Option) error {
@@ -124,7 +124,6 @@ func (video *Video) Download(index int, filename string, option *Option) error {
 	if resp, err := http.Head(url); err != nil {
 		return fmt.Errorf("Head request failed: %s", err)
 	} else {
-		// Get video content length
 		if size := resp.Header.Get("Content-Length"); len(size) == 0 {
 			return errors.New("Content-Length header is missing")
 		} else if length, err = strconv.ParseInt(size, 10, 64); err != nil {
@@ -156,7 +155,11 @@ func (video *Video) Download(index int, filename string, option *Option) error {
 	// Download stats
 	duration := time.Now().Sub(start)
 	speed := float64(length) / float64(duration/time.Second)
-	duration -= duration % time.Second
+	if duration > time.Second {
+		duration -= duration % time.Second
+	} else {
+		speed = float64(length)
+	}
 
 	if option.Rename {
 		// Rename output file using video title
@@ -183,9 +186,10 @@ func (video *Video) Download(index int, filename string, option *Option) error {
 		if err != nil {
 			fmt.Println("ffmpeg not found")
 		} else {
+			fmt.Println("Extracting autio ..")
 			fname := video.Filename
 			mp3 := strings.TrimRight(fname, filepath.Ext(fname)) + ".mp3"
-			cmd := exec.Command(ffmpeg, "-y", "-i", fname, "-vn", mp3)
+			cmd := exec.Command(ffmpeg, "-y", "-loglevel", "quiet", "-i", fname, "-vn", mp3)
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
@@ -239,7 +243,7 @@ func printProgress(out *os.File, offset, length int64) {
 			duration, abbr(offset), abbr(length), percent, abbr(speed))
 		fmt.Println(progress)
 		tail = offset
-		if tail == length {
+		if tail >= length {
 			break
 		}
 	}
@@ -284,7 +288,7 @@ func fetchMeta(video_id string) (string, error) {
 }
 
 // parse youtube video metadata and return a Video object
-func parseMeta(video_id, query_string string) (Video, error) {
+func parseMeta(video_id, query_string string) (*Video, error) {
 	// parse the query string
 	u, _ := url.Parse("?" + query_string)
 
@@ -293,11 +297,11 @@ func parseMeta(video_id, query_string string) (Video, error) {
 
 	// no such video
 	if query.Get("errorcode") != "" || query.Get("status") == "fail" {
-		return Video{}, errors.New(query.Get("reason"))
+		return nil, errors.New(query.Get("reason"))
 	}
 
 	// collate the necessary params
-	video := Video{
+	video := &Video{
 		Id:            video_id,
 		Title:         query.Get("title"),
 		Author:        query.Get("author"),
