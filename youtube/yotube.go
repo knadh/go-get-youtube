@@ -10,7 +10,7 @@
 	License: GPL v2
 **/
 
-package main
+package youtube
 
 import (
 	"errors"
