@@ -124,11 +124,16 @@ func (video *Video) Download(index int, filename string, option *Option) error {
 	if resp, err := http.Head(url); err != nil {
 		return fmt.Errorf("Head request failed: %s", err)
 	} else {
+		if resp.StatusCode == 403 {
+			return errors.New("Head request failed: Video is 403 forbidden")
+		}
+
 		if size := resp.Header.Get("Content-Length"); len(size) == 0 {
 			return errors.New("Content-Length header is missing")
 		} else if length, err = strconv.ParseInt(size, 10, 64); err != nil {
 			return fmt.Errorf("Invalid Content-Length: %s", err)
 		}
+
 		if length <= offset {
 			fmt.Println("Video file is already downloaded.")
 			return nil
@@ -186,7 +191,7 @@ func (video *Video) Download(index int, filename string, option *Option) error {
 		if err != nil {
 			fmt.Println("ffmpeg not found")
 		} else {
-			fmt.Println("Extracting autio ..")
+			fmt.Println("Extracting audio ..")
 			fname := video.Filename
 			mp3 := strings.TrimRight(fname, filepath.Ext(fname)) + ".mp3"
 			cmd := exec.Command(ffmpeg, "-y", "-loglevel", "quiet", "-i", fname, "-vn", mp3)
