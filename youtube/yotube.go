@@ -65,6 +65,7 @@ type Option struct {
 	Resume bool // resume failed or cancelled download
 	Rename bool // rename output file using video title
 	Mp3    bool // extract audio using ffmpeg
+	Silent bool // keep downloader silent
 }
 
 // _________________________________________________________________
@@ -104,7 +105,9 @@ func (video *Video) Download(index int, filename string, option *Option) error {
 		if err != nil {
 			return fmt.Errorf("Unable to seek file %q: %s", filename, err)
 		}
-		fmt.Printf("Resuming from offset %d (%s)\n", offset, abbr(offset))
+		if !option.Silent {
+			fmt.Printf("Resuming from offset %d (%s)\n", offset, abbr(offset))
+		}
 
 	} else {
 		// Start new download
@@ -135,12 +138,14 @@ func (video *Video) Download(index int, filename string, option *Option) error {
 		}
 
 		if length <= offset {
-			fmt.Println("Video file is already downloaded.")
+			if !option.Silent {
+				fmt.Println("Video file is already downloaded.")
+			}
 			return nil
 		}
 	}
 
-	if length > 0 {
+	if length > 0 && !option.Silent {
 		go printProgress(out, offset, length)
 	}
 
@@ -178,37 +183,49 @@ func (video *Video) Download(index int, filename string, option *Option) error {
 		title = strings.TrimRight(strings.ToLower(title), "-")
 		video.Filename = fmt.Sprintf("%s-%s%s", fname, title, ext)
 		if err := os.Rename(filename, video.Filename); err != nil {
-			fmt.Println("Failed to rename output file:", err)
+			if !option.Silent {
+				fmt.Println("Failed to rename output file:", err)
+			}
 		}
 	}
 
 	// Extract audio from downloaded video using ffmpeg
 	if option.Mp3 {
 		if err := out.Close(); err != nil {
-			fmt.Println("Error:", err)
+			if !option.Silent {
+				fmt.Println("Error:", err)
+			}
 		}
 		ffmpeg, err := exec.LookPath("ffmpeg")
 		if err != nil {
-			fmt.Println("ffmpeg not found")
+			if !option.Silent {
+				fmt.Println("ffmpeg not found")
+			}
 		} else {
-			fmt.Println("Extracting audio ..")
+			if !option.Silent {
+				fmt.Println("Extracting audio ..")
+			}
 			fname := video.Filename
 			mp3 := strings.TrimRight(fname, filepath.Ext(fname)) + ".mp3"
 			cmd := exec.Command(ffmpeg, "-y", "-loglevel", "quiet", "-i", fname, "-vn", mp3)
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				fmt.Println("Failed to extract audio:", err)
-			} else {
-				fmt.Println()
-				fmt.Println("Extracted audio:", mp3)
+			err := cmd.Run()
+			if !option.Silent {
+				if err != nil {
+					fmt.Println("Failed to extract audio:", err)
+				} else {
+					fmt.Println()
+					fmt.Println("Extracted audio:", mp3)
+				}
 			}
 		}
 	}
-
-	fmt.Printf("Download duration: %s\n", duration)
-	fmt.Printf("Average speed: %s/s\n", abbr(int64(speed)))
+	if !option.Silent {
+		fmt.Printf("Download duration: %s\n", duration)
+		fmt.Printf("Average speed: %s/s\n", abbr(int64(speed)))
+	}
 
 	return nil
 }
