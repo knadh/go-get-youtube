@@ -32,7 +32,7 @@ import (
 
 const (
 	// Youtube video meta source url
-	URL_META = "http://www.youtube.com/get_video_info?&video_id="
+	URL_META = "https://www.youtube.com/get_video_info?&video_id="
 )
 
 const (
@@ -337,7 +337,7 @@ func parseMeta(video_id, query_string string) (*Video, error) {
 			Itag:       itag,
 			Video_type: fquery.Get("type"),
 			Quality:    fquery.Get("quality"),
-			Url:        fquery.Get("url") + "&signature=" + fquery.Get("sig"),
+			Url:        fquery.Get("url"),
 		})
 	}
 
