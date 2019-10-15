@@ -1,3 +1,6 @@
+### fork from https://github.com/knadh/go-get-youtube
+## includes options to convert with timeOffset and duration properties
+
 # go-get-youtube v 0.2
 A tiny Go library + client (command line Youtube video downloader) for downloading Youtube videos. The library is capable of fetching Youtube video metadata, in addition to downloading videos. If ffmpeg is available, client can extract MP3 audio from downloaded video files.
 
