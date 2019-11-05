@@ -94,18 +94,21 @@ func main() {
 	flag.Parse()
 
 	// no id supplied, show help text
-	if *video_id == "" {
+	if *video_id == "" && len(os.Args) < 2 {
 		intro()
 		return
 	}
 
 	fmt.Println("Hold on ...")
 
-	// feth the video metadata
+	// fetch the video metadata
 	video, err := youtube.Get(*video_id)
 	if err != nil {
-		fmt.Println("ERROR: ", err)
-		return
+		video, err = youtube.Get(os.Args[1])
+		if err != nil {
+			fmt.Println("ERROR: ", err)
+			return
+		}
 	}
 
 	printVideoMeta(video)
