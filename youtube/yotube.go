@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -228,6 +229,7 @@ func abbr(byteSize int64) string {
 
 // Measure download speed using output file offset
 func printProgress(out *os.File, offset, length int64) {
+	var clear string
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	start := time.Now()
@@ -244,12 +246,21 @@ func printProgress(out *os.File, offset, length int64) {
 		speed := offset - tail
 		percent := int(100 * offset / length)
 		progress := fmt.Sprintf(
-			"%s\t %s/%s\t %d%%\t %s/s",
-			duration, abbr(offset), abbr(length), percent, abbr(speed))
+			"%s%s\t %s/%s\t %d%%\t %s/s",
+			clear, duration, abbr(offset), abbr(length), percent, abbr(speed))
 		fmt.Println(progress)
 		tail = offset
 		if tail >= length {
 			break
+		}
+		if clear == "" {
+			switch runtime.GOOS {
+				case "darwin":
+					clear = "\033[A\033[2K\r"
+				case "linux":
+					clear = "\033[A\033[2K\r"
+				case "windows":
+			}
 		}
 	}
 }
